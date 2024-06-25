@@ -1,0 +1,7 @@
+*.json
+*.html
+*.csv
+*.txt
+*.iml
+.*
+!.gitignore

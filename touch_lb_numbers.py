@@ -3,11 +3,13 @@ import json
 import argparse
 import time
 import os
-
 import re
 from http.client import HTTPException
 from itertools import chain
 import platform
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+
 
 try:
     import requests
@@ -44,41 +46,55 @@ class Logger:
     def exception(self, message, *args):
         raise NotImplementedError
 
+    def warning(self, message, *args):
+        raise NotImplementedError
+
 
 logger = Logger()
 
 
-def load_first_row_to_book(file_name):
-    with open(file_name) as numbers_file:
-        reader = csv.DictReader(
-            numbers_file,
-            fieldnames=['id', 'first_name', 'last_name', 'father_name', 'mother_name', 'ref_number', 'birth_day',
-                        'birth_month', 'birth_year', 'confirmation_code']
+fieldnames = ['id', 'first_name', 'last_name', 'father_name', 'mother_name', 'ref_number', 'birth_day',
+              'birth_month', 'birth_year', 'confirmation_code']
+
+
+def load_info_to_book(file_name):
+    with open(file_name) as info_file:
+        reader = csv.DictReader(info_file, fieldnames=fieldnames)
+        return list(reader)
+
+
+def remove_saved_info(numbers_to_book_file_name, booked_numbers_file_name):
+    with open(numbers_to_book_file_name, 'r') as numbers_to_book_file:
+        to_book_reader = csv.DictReader(numbers_to_book_file, fieldnames=fieldnames)
+        to_book_list = list(to_book_reader)
+    with open(booked_numbers_file_name, 'r') as booked_numbers_file:
+        booked_reader = csv.DictReader(
+            booked_numbers_file,
+            fieldnames=['booked_number', *fieldnames]
         )
-        return next(reader)
-
-
-def remove_first_line(file_name):
-    with open(file_name, 'r') as numbers_file:
-        lines = numbers_file.readlines()
-    with open(file_name, 'w') as numbers_file:
-        numbers_file.writelines(lines[1:])
+        booked_list = list(booked_reader)
+    with open(numbers_to_book_file_name, 'w') as numbers_to_book_file:
+        writer = csv.DictWriter(numbers_to_book_file, fieldnames=fieldnames)
+        for row in to_book_list:
+            if row['id'] not in [booked_row['id'] for booked_row in booked_list]:
+                writer.writerow(row)
 
 
 def save_booked_info(file_name, id, first_name, last_name, father_name, mother_name, ref_number, birth_day,
-                     birth_month, birth_year, confirmation_code, booked_number):
-    with open(file_name, 'a') as numbers_file:
-        writer = csv.DictWriter(
-            numbers_file,
-            fieldnames=['booked_number', 'id', 'first_name', 'last_name', 'father_name', 'mother_name',
-                        'ref_number', 'birth_day', 'birth_month', 'birth_year', 'confirmation_code']
-        )
-        writer.writerow({
-            'booked_number': booked_number, 'id': id, 'first_name': first_name, 'last_name': last_name,
-            'father_name': father_name, 'mother_name': mother_name, 'ref_number': ref_number,
-            'birth_day': birth_day, 'birth_month': birth_month, 'birth_year': birth_year,
-            'confirmation_code': confirmation_code
-        })
+                     birth_month, birth_year, confirmation_code, booked_number, lock=Lock()):
+    with lock:
+        with open(file_name, 'a') as numbers_file:
+            writer = csv.DictWriter(
+                numbers_file,
+                fieldnames=['booked_number', 'id', 'first_name', 'last_name', 'father_name', 'mother_name',
+                            'ref_number', 'birth_day', 'birth_month', 'birth_year', 'confirmation_code']
+            )
+            writer.writerow({
+                'booked_number': booked_number, 'id': id, 'first_name': first_name, 'last_name': last_name,
+                'father_name': father_name, 'mother_name': mother_name, 'ref_number': ref_number,
+                'birth_day': birth_day, 'birth_month': birth_month, 'birth_year': birth_year,
+                'confirmation_code': confirmation_code
+            })
 
 
 def load_numbers(numbers_file_name):
@@ -139,6 +155,15 @@ def send_telegram_message(bot, channel_id, message):
             bot.send_message(channel_id, part)
 
 
+def booking_process(premium_number, info_row, notification_bot, args):
+    booked_message = do_number_booking(premium_number, **info_row)
+    if booked_message:
+        send_telegram_message(notification_bot, args.telegram_channel_id, booked_message)
+        save_booked_info(args.booked_numbers, booked_number=premium_number, **info_row)
+        return premium_number
+    return False
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Get the new numbers from touch.com.lb')
     parser.add_argument('--interval', '-i', type=int, default=3, help='Refresh interval in seconds')
@@ -175,14 +200,21 @@ if __name__ == '__main__':
             send_numbers(numbers, old_numbers, notification_bot, args)
             premium_numbers_list = load_numbers(args.available_premium_numbers)
             if len(premium_numbers_list):
-                info_row = load_first_row_to_book(args.numbers_to_book)
-                booked_message = do_number_booking(premium_numbers_list[0], **info_row)
-                if booked_message:
-                    send_telegram_message(notification_bot, args.telegram_channel_id, booked_message)
-                    remove_first_line(args.numbers_to_book)
-                    save_booked_info(args.booked_numbers, booked_number=premium_numbers_list[0], **info_row)
-                    premium_numbers_list.pop(0)
-                    save_numbers([int(n) for n in premium_numbers_list], args.available_premium_numbers)
+                executor = ThreadPoolExecutor()
+                info = load_info_to_book(args.numbers_to_book)
+                futures = []
+                for premium_number, info_row in zip(premium_numbers_list, info):
+                    futures.append(executor.submit(booking_process, premium_number, info_row, notification_bot, args))
+                for future in futures:
+                    try:
+                        if p_number := future.result():
+                            premium_numbers_list.remove(p_number)
+                            save_numbers([int(n) for n in premium_numbers_list], args.available_premium_numbers)
+                    except Exception as e:
+                        logger.error('Error on booking: %s', e)
+                remove_saved_info(args.numbers_to_book, args.booked_numbers)
+                for premium_number in premium_numbers_list:
+                    logger.warning('Premium number %s was not booked', premium_number)
             time.sleep(args.interval)
         except KeyboardInterrupt:
             logger.info('Stopped.')

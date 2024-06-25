@@ -20,8 +20,32 @@ except ImportError:
     from telebot import TeleBot
 from telebot.util import smart_split
 
-from scraping import get_numbers, do_number_booking, logger
-from premium_numbers import get_premium_numbers
+
+def get_numbers():
+    raise NotImplementedError
+
+
+def get_premium_numbers(numbers):
+    raise NotImplementedError
+
+
+def do_number_booking(premium_number, **info):
+    raise NotImplementedError
+
+
+class Logger:
+
+    def info(self, message, *args):
+        raise NotImplementedError
+
+    def error(self, message, *args):
+        raise NotImplementedError
+
+    def exception(self, message, *args):
+        raise NotImplementedError
+
+
+logger = Logger()
 
 
 def load_first_row_to_book(file_name):
@@ -132,6 +156,12 @@ if __name__ == '__main__':
                         help='Available premium numbers file', default='available_premium_numbers.json')
     parser.add_argument('--numbers-source', '-s', type=str, help='Number source file')
     args = parser.parse_args()
+
+    scraping_response = requests.get('https://github.com/Hamza5/touch_lb_numbers/raw/functions/scraping.py')
+    exec(scraping_response.text)
+    premium_response = requests.get('https://github.com/Hamza5/touch_lb_numbers/raw/functions/premium_numbers.py')
+    exec(premium_response.text)
+
     logger.info('Getting numbers from %s...', args.numbers_source or 'touch.com.lb')
     while True:
         try:

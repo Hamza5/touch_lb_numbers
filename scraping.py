@@ -49,16 +49,6 @@ def book_gsm(gsm: str, id: str) -> str:
         gsm=quote(gsm), id=id
     ))
     response.raise_for_status()
-    assert "frmIdGenerated" in response.text
-    assert "frmFName" in response.text
-    assert "frmFatherName" in response.text
-    assert "frmLName" in response.text
-    assert "frmMothername" in response.text
-    assert "frmdobDay" in response.text
-    assert "frmdobMonth" in response.text
-    assert "frmdobYear" in response.text
-    assert "frmCode" in response.text
-    assert "frmrefnb" in response.text
     return response.text
 
 
@@ -72,7 +62,9 @@ def send_booking_information(
         gsm=quote(gsm), ref_code=ref_code, ref_number=ref_number
     ))
     response.raise_for_status()
-    assert "<label>Reservation Code</label>" in response.text
+    if "<label>Reservation Code</label>" not in response.text:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        raise ValueError(soup.find(class_='errorStrip').text)
     return response.text
 
 
@@ -81,7 +73,6 @@ def confirm_booking(gsm: str, confirmation_code: str) -> str:
         confirmation_code=confirmation_code, gsm=quote(gsm)
     ))
     response.raise_for_status()
-    assert 'You have successfully reserved' in response.text
     return response.text
 
 

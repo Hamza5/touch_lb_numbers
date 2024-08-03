@@ -24,13 +24,15 @@ from scraping import get_numbers, do_number_booking, logger
 from premium_numbers import get_premium_numbers
 
 
+source_csv_fieldnames = ['id', 'first_name', 'last_name', 'father_name', 'mother_name',
+                         'ref_number', 'birth_day', 'birth_month', 'birth_year', 'confirmation_code', 'id_type']
+
+destination_csv_fieldnames = ['booked_number'] + source_csv_fieldnames
+
+
 def load_first_row_to_book(file_name):
     with open(file_name) as numbers_file:
-        reader = csv.DictReader(
-            numbers_file,
-            fieldnames=['id', 'first_name', 'last_name', 'father_name', 'mother_name', 'ref_number', 'birth_day',
-                        'birth_month', 'birth_year', 'confirmation_code']
-        )
+        reader = csv.DictReader(numbers_file, fieldnames=source_csv_fieldnames)
         return next(reader)
 
 
@@ -42,18 +44,14 @@ def remove_first_line(file_name):
 
 
 def save_booked_info(file_name, id, first_name, last_name, father_name, mother_name, ref_number, birth_day,
-                     birth_month, birth_year, confirmation_code, booked_number):
+                     birth_month, birth_year, confirmation_code, booked_number, id_type):
     with open(file_name, 'a') as numbers_file:
-        writer = csv.DictWriter(
-            numbers_file,
-            fieldnames=['booked_number', 'id', 'first_name', 'last_name', 'father_name', 'mother_name',
-                        'ref_number', 'birth_day', 'birth_month', 'birth_year', 'confirmation_code']
-        )
+        writer = csv.DictWriter(numbers_file, fieldnames=destination_csv_fieldnames)
         writer.writerow({
             'booked_number': booked_number, 'id': id, 'first_name': first_name, 'last_name': last_name,
             'father_name': father_name, 'mother_name': mother_name, 'ref_number': ref_number,
             'birth_day': birth_day, 'birth_month': birth_month, 'birth_year': birth_year,
-            'confirmation_code': confirmation_code
+            'confirmation_code': confirmation_code, 'id_type': id_type
         })
 
 
@@ -140,20 +138,25 @@ if __name__ == '__main__':
                     numbers = [int(x) for x in re.findall(r'\d+', f.read())]
             else:
                 numbers = get_numbers()
-            old_numbers = load_numbers(args.old_numbers_file_name)
-            notification_bot = TeleBot(args.telegram_token, threaded=False)
-            send_numbers(numbers, old_numbers, notification_bot, args)
-            premium_numbers_list = load_numbers(args.available_premium_numbers)
-            if len(premium_numbers_list):
-                info_row = load_first_row_to_book(args.numbers_to_book)
-                booked_message = do_number_booking(premium_numbers_list[0], **info_row)
-                if booked_message:
-                    send_telegram_message(notification_bot, args.telegram_channel_id, booked_message)
-                    remove_first_line(args.numbers_to_book)
-                    save_booked_info(args.booked_numbers, booked_number=premium_numbers_list[0], **info_row)
-                    premium_numbers_list.pop(0)
-                    save_numbers([int(n) for n in premium_numbers_list], args.available_premium_numbers)
-            time.sleep(args.interval)
+            if numbers:
+                old_numbers = load_numbers(args.old_numbers_file_name)
+                notification_bot = TeleBot(args.telegram_token, threaded=False)
+                send_numbers(numbers, old_numbers, notification_bot, args)
+                premium_numbers_list = load_numbers(args.available_premium_numbers)
+                if len(premium_numbers_list):
+                    info_row = load_first_row_to_book(args.numbers_to_book)
+                    booked_message = do_number_booking(premium_numbers_list[0], **info_row)
+                    if booked_message:
+                        send_telegram_message(notification_bot, args.telegram_channel_id, booked_message)
+                        remove_first_line(args.numbers_to_book)
+                        save_booked_info(args.booked_numbers, booked_number=premium_numbers_list[0], **info_row)
+                        premium_numbers_list.pop(0)
+                        save_numbers([int(n) for n in premium_numbers_list], args.available_premium_numbers)
+                else:
+                    time.sleep(args.interval)
+            else:
+                logger.warning('No numbers found!')
+                time.sleep(args.interval)
         except KeyboardInterrupt:
             logger.info('Stopped.')
             break

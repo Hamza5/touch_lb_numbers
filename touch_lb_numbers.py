@@ -3,6 +3,7 @@ import json
 import argparse
 import time
 import os
+
 import re
 from http.client import HTTPException
 from itertools import chain
@@ -22,78 +23,52 @@ except ImportError:
     from telebot import TeleBot
 from telebot.util import smart_split
 
-
-def get_numbers():
-    raise NotImplementedError
-
-
-def get_premium_numbers(numbers):
-    raise NotImplementedError
+from scraping import get_numbers, do_number_booking, logger
+from premium_numbers import get_premium_numbers
 
 
-def do_number_booking(premium_number, **info):
-    raise NotImplementedError
+source_csv_fieldnames = ['id', 'first_name', 'last_name', 'father_name', 'mother_name',
+                         'ref_number', 'birth_day', 'birth_month', 'birth_year', 'confirmation_code', 'id_type']
+
+destination_csv_fieldnames = ['booked_number'] + source_csv_fieldnames
 
 
-class Logger:
-
-    def info(self, message, *args):
-        raise NotImplementedError
-
-    def error(self, message, *args):
-        raise NotImplementedError
-
-    def exception(self, message, *args):
-        raise NotImplementedError
-
-    def warning(self, message, *args):
-        raise NotImplementedError
-
-
-logger = Logger()
-
-
-fieldnames = ['id', 'first_name', 'last_name', 'father_name', 'mother_name', 'ref_number', 'birth_day',
-              'birth_month', 'birth_year', 'confirmation_code']
-
-
-def load_info_to_book(file_name):
-    with open(file_name) as info_file:
-        reader = csv.DictReader(info_file, fieldnames=fieldnames)
-        return list(reader)
+def load_first_row_to_book(file_name):
+    with open(file_name) as numbers_file:
+        reader = csv.DictReader(numbers_file, fieldnames=source_csv_fieldnames)
+        return next(reader)
 
 
 def remove_saved_info(numbers_to_book_file_name, booked_numbers_file_name):
     with open(numbers_to_book_file_name, 'r') as numbers_to_book_file:
-        to_book_reader = csv.DictReader(numbers_to_book_file, fieldnames=fieldnames)
+        to_book_reader = csv.DictReader(numbers_to_book_file, fieldnames=source_csv_fieldnames)
         to_book_list = list(to_book_reader)
     with open(booked_numbers_file_name, 'r') as booked_numbers_file:
         booked_reader = csv.DictReader(
             booked_numbers_file,
-            fieldnames=['booked_number', *fieldnames]
+            fieldnames=destination_csv_fieldnames
         )
         booked_list = list(booked_reader)
     with open(numbers_to_book_file_name, 'w') as numbers_to_book_file:
-        writer = csv.DictWriter(numbers_to_book_file, fieldnames=fieldnames)
+        writer = csv.DictWriter(numbers_to_book_file, fieldnames=destination_csv_fieldnames)
         for row in to_book_list:
             if row['id'] not in [booked_row['id'] for booked_row in booked_list]:
                 writer.writerow(row)
 
 
 def save_booked_info(file_name, id, first_name, last_name, father_name, mother_name, ref_number, birth_day,
-                     birth_month, birth_year, confirmation_code, booked_number, lock=Lock()):
+                     birth_month, birth_year, confirmation_code, booked_number, id_type, lock=Lock()):
     with lock:
         with open(file_name, 'a') as numbers_file:
             writer = csv.DictWriter(
                 numbers_file,
-                fieldnames=['booked_number', 'id', 'first_name', 'last_name', 'father_name', 'mother_name',
-                            'ref_number', 'birth_day', 'birth_month', 'birth_year', 'confirmation_code']
+                fieldnames=destination_csv_fieldnames
             )
             writer.writerow({
                 'booked_number': booked_number, 'id': id, 'first_name': first_name, 'last_name': last_name,
                 'father_name': father_name, 'mother_name': mother_name, 'ref_number': ref_number,
                 'birth_day': birth_day, 'birth_month': birth_month, 'birth_year': birth_year,
-                'confirmation_code': confirmation_code
+                'confirmation_code': confirmation_code, 'id_type': id_type
             })
 
 
@@ -181,12 +156,6 @@ if __name__ == '__main__':
                         help='Available premium numbers file', default='available_premium_numbers.json')
     parser.add_argument('--numbers-source', '-s', type=str, help='Number source file')
     args = parser.parse_args()
-
-    scraping_response = requests.get('https://github.com/Hamza5/touch_lb_numbers/raw/functions/scraping.py')
-    exec(scraping_response.text)
-    premium_response = requests.get('https://github.com/Hamza5/touch_lb_numbers/raw/functions/premium_numbers.py')
-    exec(premium_response.text)
-
     logger.info('Getting numbers from %s...', args.numbers_source or 'touch.com.lb')
     while True:
         try:
@@ -195,27 +164,30 @@ if __name__ == '__main__':
                     numbers = [int(x) for x in re.findall(r'\d+', f.read())]
             else:
                 numbers = get_numbers()
-            old_numbers = load_numbers(args.old_numbers_file_name)
-            notification_bot = TeleBot(args.telegram_token, threaded=False)
-            send_numbers(numbers, old_numbers, notification_bot, args)
-            premium_numbers_list = load_numbers(args.available_premium_numbers)
-            if len(premium_numbers_list):
-                executor = ThreadPoolExecutor()
-                info = load_info_to_book(args.numbers_to_book)
-                futures = []
-                for premium_number, info_row in zip(premium_numbers_list, info):
-                    futures.append(executor.submit(booking_process, premium_number, info_row, notification_bot, args))
-                for future in futures:
-                    try:
-                        if p_number := future.result():
-                            premium_numbers_list.remove(p_number)
-                            save_numbers([int(n) for n in premium_numbers_list], args.available_premium_numbers)
-                    except Exception as e:
-                        logger.error('Error on booking: %s', e)
-                remove_saved_info(args.numbers_to_book, args.booked_numbers)
-                for premium_number in premium_numbers_list:
-                    logger.warning('Premium number %s was not booked', premium_number)
-            time.sleep(args.interval)
+            if numbers:
+                old_numbers = load_numbers(args.old_numbers_file_name)
+                notification_bot = TeleBot(args.telegram_token, threaded=False)
+                send_numbers(numbers, old_numbers, notification_bot, args)
+                premium_numbers_list = load_numbers(args.available_premium_numbers)
+                if len(premium_numbers_list):
+                    executor = ThreadPoolExecutor()
+                    info = load_info_to_book(args.numbers_to_book)
+                    futures = []
+                    for premium_number, info_row in zip(premium_numbers_list, info):
+                        futures.append(executor.submit(booking_process, premium_number, info_row, notification_bot, args))
+                    for future in futures:
+                        try:
+                            if p_number := future.result():
+                                premium_numbers_list.remove(p_number)
+                                save_numbers([int(n) for n in premium_numbers_list], args.available_premium_numbers)
+                        except Exception as e:
+                            logger.error('Error on booking: %s', e)
+                    remove_saved_info(args.numbers_to_book, args.booked_numbers)
+                    for premium_number in premium_numbers_list:
+                        logger.warning('Premium number %s was not booked', premium_number)
+            else:
+                logger.warning('No numbers found!')
+                time.sleep(args.interval)
         except KeyboardInterrupt:
             logger.info('Stopped.')
             break

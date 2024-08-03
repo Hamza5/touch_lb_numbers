@@ -33,10 +33,10 @@ source_csv_fieldnames = ['id', 'first_name', 'last_name', 'father_name', 'mother
 destination_csv_fieldnames = ['booked_number'] + source_csv_fieldnames
 
 
-def load_first_row_to_book(file_name):
-    with open(file_name) as numbers_file:
-        reader = csv.DictReader(numbers_file, fieldnames=source_csv_fieldnames)
-        return next(reader)
+def load_info_to_book(file_name):
+    with open(file_name) as info_file:
+        reader = csv.DictReader(info_file, fieldnames=source_csv_fieldnames)
+        return list(reader)
 
 
 def remove_saved_info(numbers_to_book_file_name, booked_numbers_file_name):
@@ -50,7 +50,7 @@ def remove_saved_info(numbers_to_book_file_name, booked_numbers_file_name):
         )
         booked_list = list(booked_reader)
     with open(numbers_to_book_file_name, 'w') as numbers_to_book_file:
-        writer = csv.DictWriter(numbers_to_book_file, fieldnames=destination_csv_fieldnames)
+        writer = csv.DictWriter(numbers_to_book_file, fieldnames=source_csv_fieldnames)
         for row in to_book_list:
             if row['id'] not in [booked_row['id'] for booked_row in booked_list]:
                 writer.writerow(row)

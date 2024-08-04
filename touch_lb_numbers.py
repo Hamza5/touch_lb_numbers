@@ -162,6 +162,10 @@ if __name__ == '__main__':
             if args.numbers_source:
                 with open(args.numbers_source) as f:
                     numbers = [int(x) for x in re.findall(r'\d+', f.read())]
+                for category, p_numbers in get_premium_numbers(numbers)[0].items():
+                    if len(p_numbers) > 0:
+                        logger.info(f'{category}: {p_numbers}')
+                break
             else:
                 numbers = get_numbers()
             if numbers:

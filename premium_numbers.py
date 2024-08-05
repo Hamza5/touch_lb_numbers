@@ -78,11 +78,13 @@ def has_digits_ordered_by_one_diff(number, digit_count, ascending=None):
     return ordered
 
 
-def diff_by_one_each_two_digits(number):
+def diff_by_one_each_two_digits(number, ascending=None):
     """
     Check if the difference between each two digits is one.
     :param number: the number to check.
-    :return: True if the difference between each two digits is one, False otherwise.
+    :param ascending: if True, the digits should be in ascending order, if False, the digits should be in descending
+     order. If None, the order doesn't matter.
+    :return: True if the number respects the condition, False otherwise.
 
     :Example:
     >>> diff_by_one_each_two_digits(123456)
@@ -97,9 +99,19 @@ def diff_by_one_each_two_digits(number):
     True
     >>> diff_by_one_each_two_digits(20191816)
     False
+    >>> diff_by_one_each_two_digits(20191817, ascending=False)
+    True
+    >>> diff_by_one_each_two_digits(20191817, ascending=True)
+    False
     """
     number = str(number)
-    return all(abs(int(number[i:i + 2]) - int(number[i + 2: i + 4])) == 1 for i in range(0, len(number) - 3, 2))
+    if ascending is True:
+        return all(int(number[i:i + 2]) - int(number[i + 2: i + 4]) == -1 for i in range(0, len(number) - 3, 2))
+    elif ascending is False:
+        return all(int(number[i:i + 2]) - int(number[i + 2: i + 4]) == 1 for i in range(0, len(number) - 3, 2))
+    else:
+        return (diff_by_one_each_two_digits(number, ascending=True) or
+                diff_by_one_each_two_digits(number, ascending=False))
 
 
 def get_premium_numbers(numbers):
@@ -144,6 +156,10 @@ def get_premium_numbers(numbers):
                  has_digits_ordered_by_one_diff(number_str[-3:], 3, ascending=True))
         )
     ]
+    diff_by_one_each_two_digits_numbers = [
+        int(number_str) for number_str in numbers_str
+        if phone_number_re.match(number_str) and diff_by_one_each_two_digits(number_str[-6:])
+    ]
     premium_numbers = {
         'ab_only': ab_only,
         'aab_ccb': aab_ccb,
@@ -171,7 +187,8 @@ def get_premium_numbers(numbers):
         '03_aca_bca': z3_aca_bca,
         '03_bca_aca': z3_bca_aca,
         '03_a_cd_cd_x': z3_a_cd_cd_x,
-        'ascending_and_descending': ascending_and_descending
+        'ascending_and_descending': ascending_and_descending,
+        'diff_by_one_each_two_digits': diff_by_one_each_two_digits_numbers
     }
     other_numbers = sorted(set(numbers) - set(chain(*premium_numbers.values())))
     return premium_numbers, other_numbers

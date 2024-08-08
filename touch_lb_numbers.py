@@ -101,7 +101,8 @@ def send_numbers(numbers, old_numbers, notification_bot, args):
                 if len(p_numbers) > 0:
                     logger.info(f'{category}: {p_numbers}')
             premium_numbers_set.update(load_numbers(args.available_premium_numbers))
-            premium_numbers_set.difference_update(premium_number_categories['abc_only'])
+            abc_only = set(premium_number_categories['abc_only']).difference(*premium_number_categories.values())
+            premium_numbers_set.difference_update(abc_only)
             save_numbers(list(premium_numbers_set), args.available_premium_numbers)
         logger.info('Other new numbers:')
         for number in other_numbers:

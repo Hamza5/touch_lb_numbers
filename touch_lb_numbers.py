@@ -10,7 +10,7 @@ from itertools import chain
 import platform
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
-
+from typing import Iterable
 
 try:
     import requests
@@ -101,8 +101,8 @@ def send_numbers(numbers, old_numbers, notification_bot, args):
                 if len(p_numbers) > 0:
                     logger.info(f'{category}: {p_numbers}')
             premium_numbers_set.update(load_numbers(args.available_premium_numbers))
-            abc_only = set(premium_number_categories['abc_only']).difference(*premium_number_categories.values())
-            premium_numbers_set.difference_update(abc_only)
+            excluded_abc_only = get_excluded_abc_only(premium_number_categories)
+            premium_numbers_set.difference_update(excluded_abc_only)
             save_numbers(list(premium_numbers_set), args.available_premium_numbers)
         logger.info('Other new numbers:')
         for number in other_numbers:
@@ -140,6 +140,15 @@ def booking_process(premium_number, info_row, notification_bot, args):
     return False
 
 
+def get_excluded_abc_only(premium_number_categories: dict[str, Iterable[int]]) -> set[int]:
+    premium_number_categories_without_abc_only = premium_number_categories.copy()
+    del premium_number_categories_without_abc_only['abc_only']
+    excluded_abc_only = set(premium_number_categories['abc_only']).difference(
+        *premium_number_categories_without_abc_only.values()
+    )
+    return excluded_abc_only
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Get the new numbers from touch.com.lb')
     parser.add_argument('--interval', '-i', type=int, default=3, help='Refresh interval in seconds')
@@ -163,9 +172,11 @@ if __name__ == '__main__':
             if args.numbers_source:
                 with open(args.numbers_source) as f:
                     numbers = [int(x) for x in re.findall(r'\d+', f.read())]
-                for category, p_numbers in get_premium_numbers(numbers)[0].items():
+                premium_number_categories, _ = get_premium_numbers(numbers)
+                for category, p_numbers in premium_number_categories.items():
                     if len(p_numbers) > 0:
                         logger.info(f'{category}: {p_numbers}')
+                logger.info('Excluded abc_only: %s', get_excluded_abc_only(premium_number_categories))
                 break
             else:
                 numbers = get_numbers()

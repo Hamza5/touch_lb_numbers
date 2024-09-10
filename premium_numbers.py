@@ -24,6 +24,7 @@ xxx_abc_re = re.compile(rf'^{code}(\d)\1\1\d\d\d$')
 z3_aca_bca_re = re.compile(r'^0?3(\d)(\d)\1\d\2\1$')
 z3_bca_aca_re = re.compile(r'^0?3\d(\d)(\d)\2\1\2$')
 z3_a_cd_cd_x_re = re.compile(r'^0?3\d(\d\d)\1\d$')
+ab_cb_xb_re = re.compile(rf'^{code}\d(\d)\d\1\d\1$')
 
 
 def has_digits_ordered_by_one_diff(number, digit_count, ascending=None):
@@ -160,6 +161,7 @@ def get_premium_numbers(numbers):
         int(number_str) for number_str in numbers_str
         if phone_number_re.match(number_str) and diff_by_one_each_two_digits(number_str[-6:])
     ]
+    ab_cb_xb = [int(number_str) for number_str in numbers_str if ab_cb_xb_re.match(number_str)]
     premium_numbers = {
         'ab_only': ab_only,
         'aab_ccb': aab_ccb,
@@ -188,7 +190,8 @@ def get_premium_numbers(numbers):
         '03_bca_aca': z3_bca_aca,
         '03_a_cd_cd_x': z3_a_cd_cd_x,
         'ascending_and_descending': ascending_and_descending,
-        'diff_by_one_each_two_digits': diff_by_one_each_two_digits_numbers
+        'diff_by_one_each_two_digits': diff_by_one_each_two_digits_numbers,
+        'ab_cb_xb': ab_cb_xb
     }
     other_numbers = sorted(set(numbers) - set(chain(*premium_numbers.values())))
     return premium_numbers, other_numbers

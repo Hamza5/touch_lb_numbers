@@ -32,32 +32,36 @@ source_csv_fieldnames = ['id', 'first_name', 'last_name', 'father_name', 'mother
 
 destination_csv_fieldnames = ['booked_number'] + source_csv_fieldnames
 
+lock = Lock()
+
 
 def load_info_to_book(file_name):
-    with open(file_name) as info_file:
-        reader = csv.DictReader(info_file, fieldnames=source_csv_fieldnames)
-        return list(reader)
+    with lock:
+        with open(file_name) as info_file:
+            reader = csv.DictReader(info_file, fieldnames=source_csv_fieldnames)
+            return list(reader)
 
 
 def remove_saved_info(numbers_to_book_file_name, booked_numbers_file_name):
-    with open(numbers_to_book_file_name, 'r') as numbers_to_book_file:
-        to_book_reader = csv.DictReader(numbers_to_book_file, fieldnames=source_csv_fieldnames)
-        to_book_list = list(to_book_reader)
-    with open(booked_numbers_file_name, 'r') as booked_numbers_file:
-        booked_reader = csv.DictReader(
-            booked_numbers_file,
-            fieldnames=destination_csv_fieldnames
-        )
-        booked_list = list(booked_reader)
-    with open(numbers_to_book_file_name, 'w') as numbers_to_book_file:
-        writer = csv.DictWriter(numbers_to_book_file, fieldnames=source_csv_fieldnames)
-        for row in to_book_list:
-            if row['id'] not in [booked_row['id'] for booked_row in booked_list]:
-                writer.writerow(row)
+    with lock:
+        with open(numbers_to_book_file_name, 'r') as numbers_to_book_file:
+            to_book_reader = csv.DictReader(numbers_to_book_file, fieldnames=source_csv_fieldnames)
+            to_book_list = list(to_book_reader)
+        with open(booked_numbers_file_name, 'r') as booked_numbers_file:
+            booked_reader = csv.DictReader(
+                booked_numbers_file,
+                fieldnames=destination_csv_fieldnames
+            )
+            booked_list = list(booked_reader)
+        with open(numbers_to_book_file_name, 'w') as numbers_to_book_file:
+            writer = csv.DictWriter(numbers_to_book_file, fieldnames=source_csv_fieldnames)
+            for row in to_book_list:
+                if row['id'] not in [booked_row['id'] for booked_row in booked_list]:
+                    writer.writerow(row)
 
 
 def save_booked_info(file_name, id, first_name, last_name, father_name, mother_name, ref_number, birth_day,
-                     birth_month, birth_year, confirmation_code, booked_number, id_type, lock=Lock()):
+                     birth_month, birth_year, confirmation_code, booked_number, id_type):
     with lock:
         with open(file_name, 'a') as numbers_file:
             writer = csv.DictWriter(
@@ -73,16 +77,18 @@ def save_booked_info(file_name, id, first_name, last_name, father_name, mother_n
 
 
 def load_numbers(numbers_file_name):
-    try:
-        with open(numbers_file_name) as numbers_file:
-            return json.load(numbers_file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    with lock:
+        try:
+            with open(numbers_file_name) as numbers_file:
+                return json.load(numbers_file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
 
 
 def save_numbers(numbers, file_name):
-    with open(file_name, 'w') as numbers_file:
-        json.dump(numbers, numbers_file, indent=4)
+    with lock:
+        with open(file_name, 'w') as numbers_file:
+            json.dump(numbers, numbers_file, indent=4)
 
 
 def get_new_numbers(numbers, old_numbers):
@@ -186,7 +192,7 @@ if __name__ == '__main__':
                 send_numbers(numbers, old_numbers, notification_bot, args)
                 premium_numbers_list = load_numbers(args.available_premium_numbers)
                 if len(premium_numbers_list):
-                    executor = ThreadPoolExecutor()
+                    executor = ThreadPoolExecutor(max_workers=2)
                     info = load_info_to_book(args.numbers_to_book)
                     futures = []
                     for premium_number, info_row in zip(premium_numbers_list, info):

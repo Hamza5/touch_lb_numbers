@@ -1,11 +1,14 @@
 import os
 from urllib.parse import quote
-from logging import getLogger, basicConfig
+from logging import getLogger, basicConfig, FileHandler, StreamHandler
 
 import requests
 from bs4 import BeautifulSoup
 
-basicConfig(level=os.getenv('LOG_LEVEL', 'INFO'), format='%(asctime)s [%(levelname)s]: %(message)s')
+basicConfig(
+    level=os.getenv('LOG_LEVEL', 'INFO'), format='%(asctime)s [%(levelname)s]: %(message)s',
+    handlers=[FileHandler('touch_lb_numbers.log'), StreamHandler()]
+)
 logger = getLogger(__name__)
 
 url = "https://touch.com.lb/autoforms/portal/touch/onlinereservation"

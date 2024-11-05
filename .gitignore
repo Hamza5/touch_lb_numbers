@@ -3,5 +3,6 @@
 *.csv
 *.txt
 *.iml
+*.log
 .*
 !.gitignore
